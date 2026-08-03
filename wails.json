@@ -1,0 +1,7 @@
+{
+  "name": "Custom Proxy",
+  "outputfilename": "CustomProxy.exe",
+  "info": {
+    "productName": "Custom Proxy"
+  }
+}

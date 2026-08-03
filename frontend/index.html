@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Custom Proxy v1.0 - DPI Bypass</title>
+    <style>
+        body { font-family: "Segoe UI", Arial, sans-serif; background: #1b2838; color: #fff; display: flex; justify-content: center; padding-top: 15px; margin: 0; user-select: none; overflow: hidden; }
+        .card { background: #2a475e; padding: 20px; border-radius: 8px; width: 400px; box-shadow: 0 4px 10px rgba(0,0,0,0.4); position: relative; }
+        .lang-switch { position: absolute; top: 15px; right: 20px; }
+        .lang-flag-btn { background: #1b2838; border: 1px solid #3c5a75; padding: 5px 8px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease; }
+        .lang-flag-btn svg { width: 22px; height: 15px; border-radius: 2px; display: block; }
+        .lang-flag-btn:hover { background: #2a475e; border-color: #66c0f4; transform: scale(1.08); }
+        h2 { text-align: center; margin: 0 0 16px 0; color: #66c0f4; font-size: 20px; }
+        .status-badge { background: #4c6b22; color: #a4d007; text-align: center; padding: 8px; border-radius: 4px; font-weight: bold; font-size: 13px; margin-bottom: 14px; }
+        .domain-box { margin-bottom: 12px; }
+        .domain-box label { display: block; font-size: 12px; color: #66c0f4; margin-bottom: 6px; font-weight: bold; }
+        .domain-textarea { width: 100%; height: 90px; background: #101822; border: 1px solid #3c5a75; border-radius: 4px; color: #a4d007; font-family: Consolas, monospace; font-size: 12px; padding: 8px; box-sizing: border-box; resize: none; }
+        .domain-textarea:focus { border-color: #66c0f4; outline: none; }
+        .btn-save-domain { width: 100%; background: #a4d007; color: #1b2838; border: none; padding: 8px; font-weight: bold; border-radius: 4px; cursor: pointer; margin-top: 6px; font-size: 12px; transition: 0.2s; }
+        .btn-save-domain:hover { background: #bbf008; }
+        .row { display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.2); padding: 10px 12px; border-radius: 5px; margin-bottom: 12px; }
+        .service-group { display: flex; gap: 10px; border-top: 1px solid #3c5a75; padding-top: 12px; }
+        .btn-action { background: #3c5a75; border: none; color: #fff; padding: 8px 12px; font-weight: bold; border-radius: 4px; cursor: pointer; transition: 0.2s; font-size: 12px; }
+        .btn-action:hover { background: #4a7092; }
+        .btn-install { background: #66c0f4; color: #1b2838; flex: 1; }
+        .btn-install:hover { background: #71d5ff; }
+        .btn-uninstall { background: #a84343; flex: 1; }
+        .btn-uninstall:hover { background: #c04d4d; }
+        .footer-link { text-align: center; margin-top: 12px; font-size: 11px; }
+        .footer-link a { color: #8f98a0; text-decoration: none; }
+        .footer-link a:hover { color: #66c0f4; text-decoration: underline; }
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.75); display: flex; align-items: center; justify-content: center; z-index: 999; backdrop-filter: blur(3px); }
+        .modal-overlay.hidden { display: none; }
+        .modal-box { background: #1b2838; border: 1px solid #66c0f4; border-radius: 8px; width: 320px; padding: 20px; text-align: center; }
+        .modal-title { color: #66c0f4; font-size: 15px; font-weight: bold; margin-bottom: 10px; }
+        .modal-body { font-size: 13px; color: #c6d4df; margin-bottom: 18px; line-height: 1.5; }
+        .btn-modal-close { background: #66c0f4; color: #1b2838; width: 100%; padding: 8px 0; font-weight: bold; border: none; border-radius: 4px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="lang-switch">
+            <button class="lang-flag-btn" id="btn-lang-toggle" onclick="toggleLanguage()"></button>
+        </div>
+        <h2 id="lbl_title">Custom Proxy</h2>
+        <div class="status-badge" id="lbl_status">● Dịch vụ Proxy đang hoạt động</div>
+        <div class="domain-box">
+            <label id="lbl_domains_title">Danh sách Domain (Mỗi dòng 1 domain):</label>
+            <textarea id="txt_domains" class="domain-textarea" placeholder="example.com&#10;api.example.com"></textarea>
+            <button class="btn-save-domain" onclick="saveCustomDomains()" id="btn_save_domain">Lưu & Áp Dụng Domain</button>
+        </div>
+        <div class="row">
+            <label><input type="checkbox" id="enableLog" onchange="toggleLog(this)"> <span id="lbl_log">Ghi file Log</span></label>
+            <button class="btn-action" onclick="openLogFolder()" id="btn_open_log">Mở Thư Mục</button>
+        </div>
+        <div class="service-group">
+            <button class="btn-action btn-install" onclick="manageService('install')" id="btn_install">Cài Service Tự Khởi Động</button>
+            <button class="btn-action btn-uninstall" onclick="manageService('uninstall')" id="btn_uninstall">Gỡ Service</button>
+        </div>
+        <div class="footer-link">
+            <a href="#" onclick="openHomePage()" id="lbl_homepage">Trang chủ (GitHub)</a>
+        </div>
+    </div>
+    <div id="custom-modal" class="modal-overlay hidden">
+        <div class="modal-box">
+            <div class="modal-title" id="lbl_modal_title">Thông Báo</div>
+            <div class="modal-body" id="lbl_modal_msg">...</div>
+            <button class="btn-modal-close" onclick="closeModal()">OK</button>
+        </div>
+    </div>
+    <script>
+        const flags = {
+            vi: `<svg viewBox="0 0 900 600"><rect width="900" height="600" fill="#da251d"/><polygon points="450,150 488,268 612,268 512,341 550,459 450,386 350,459 388,341 288,268 412,268" fill="#ffff00"/></svg>`,
+            en: `<svg viewBox="0 0 741 390"><rect width="741" height="390" fill="#b22234"/><path d="M0,30H741M0,90H741M0,150H741M0,210H741M0,270H741M0,330H741" stroke="#fff" stroke-width="30"/><rect width="296.4" height="210" fill="#3c3b6e"/></svg>`
+        };
+        const i18n = {
+            vi: { title: "Custom Proxy", status: "● Dịch vụ Proxy đang hoạt động", domains_title: "Danh sách Domain (Mỗi dòng 1 domain):", save_domain: "Lưu & Áp Dụng Domain", log: "Ghi file Log", open_log: "Mở Thư Mục", install: "Cài Service Tự Khởi Động", uninstall: "Gỡ Service", modal_title: "Thông Báo", homepage: "Trang chủ (GitHub)" },
+            en: { title: "Custom Proxy", status: "● Proxy Service is Running", domains_title: "Domain List (One per line):", save_domain: "Save & Apply Domains", log: "Enable Logging", open_log: "Open Folder", install: "Install Auto-Start Service", uninstall: "Uninstall Service", modal_title: "Notification", homepage: "Homepage (GitHub)" }
+        };
+
+        function toggleLanguage() {
+            let lang = localStorage.getItem("appLang") || "vi";
+            setLanguage(lang === "vi" ? "en" : "vi");
+        }
+        function setLanguage(lang) {
+            localStorage.setItem("appLang", lang);
+            document.getElementById("lbl_title").innerText = i18n[lang].title;
+            document.getElementById("lbl_status").innerText = i18n[lang].status;
+            document.getElementById("lbl_domains_title").innerText = i18n[lang].domains_title;
+            document.getElementById("btn_save_domain").innerText = i18n[lang].save_domain;
+            document.getElementById("lbl_log").innerText = i18n[lang].log;
+            document.getElementById("btn_open_log").innerText = i18n[lang].open_log;
+            document.getElementById("btn_install").innerText = i18n[lang].install;
+            document.getElementById("btn_uninstall").innerText = i18n[lang].uninstall;
+            document.getElementById("lbl_modal_title").innerText = i18n[lang].modal_title;
+            document.getElementById("lbl_homepage").innerText = i18n[lang].homepage;
+            document.getElementById("btn-lang-toggle").innerHTML = lang === "vi" ? flags.en : flags.vi;
+        }
+
+        const txtDomains = document.getElementById('txt_domains');
+
+        // Trích xuất domain ngay trên frontend để hiển thị sạch sẽ
+        function extractDomain(str) {
+            str = str.trim();
+            if (!str) return null;
+            try {
+                let url = str;
+                if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+                return new URL(url).hostname.toLowerCase();
+            } catch (e) {
+                let match = str.match(/^(?:https?:\/\/)?([^\/\s:?#]+)/i);
+                return match ? match[1].toLowerCase() : null;
+            }
+        }
+
+        function cleanDomains(text) {
+            let lines = text.split(/\r?\n/);
+            let set = new Set();
+            let result = [];
+            for (let line of lines) {
+                let domain = extractDomain(line);
+                if (domain && !set.has(domain)) {
+                    set.add(domain);
+                    result.push(domain);
+                }
+            }
+            return result.join('\n');
+        }
+
+        window.onload = async () => {
+            let lang = localStorage.getItem("appLang") || "vi";
+            setLanguage(lang);
+            try {
+                let domains = await window.go.main.App.LoadDomains();
+                txtDomains.value = domains;
+            } catch (e) {}
+        };
+
+        async function saveCustomDomains() {
+            let raw = txtDomains.value;
+            let cleaned = cleanDomains(raw);
+            txtDomains.value = cleaned; // Hiển thị đẹp
+            let res = await window.go.main.App.SaveDomains(cleaned);
+            showModal(res);
+        }
+
+        function showModal(msg) {
+            document.getElementById("lbl_modal_msg").innerHTML = msg.replace(" / ", "<br>");
+            document.getElementById("custom-modal").classList.remove("hidden");
+        }
+        function closeModal() { document.getElementById("custom-modal").classList.add("hidden"); }
+        async function toggleLog(cb) {
+            let res = await window.go.main.App.ToggleLogging(cb.checked);
+            showModal(res);
+        }
+        function manageService(action) { window.go.main.App.ManageService(action).then(res => showModal(res)); }
+        function openLogFolder() { window.go.main.App.OpenLogFolder(); }
+        function openHomePage() { window.go.main.App.OpenHomePage(); }
+    </script>
+</body>
+</html>

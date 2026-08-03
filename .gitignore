@@ -1,0 +1,32 @@
+# Executables & Wails builds
+build/bin/
+*.exe
+*.exe.manifest
+*.dll
+*.so
+*.dylib
+
+# Frontend dependencies & build outputs
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Go binaries & cache
+*.test
+*.out
+vendor/
+
+# IDE / OS junk
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+.DS_Store
+Thumbs.db
+
+# Environment variables (chứa key/password nếu có)
+.env
+*.env
