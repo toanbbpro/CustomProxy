@@ -14,6 +14,20 @@
 * **Cấu hình linh hoạt:** Dễ dàng thêm, chỉnh sửa và chuyển đổi qua lại giữa các node Proxy.
 * **Cross-platform:** Hỗ trợ đóng gói dễ dàng cho hệ điều hành Windows (và macOS/Linux).
 
+### 📸 Screenshot
+
+<div align="center">
+  <img width="466" height="533" alt="image" src="https://github.com/user-attachments/assets/a8a0cc01-64bf-4416-b926-fe1db30e32f2" />
+</div>
+
+---
+
+### 📥 Download
+
+Latest Release: **v1.0**
+
+👉 **[Download CustomProxy.zip (GitHub Releases)](https://github.com/toanbbpro/CustomProxy/releases/latest)**
+
 ---
 
 ## 🛠️ Yêu cầu hệ thống (Prerequisites)
