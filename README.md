@@ -1,13 +1,17 @@
-# Custom Proxy
+<div align="center">
+
+# 🚀 Custom Proxy
+
+A lightweight, high-performance **Custom Proxy** management and routing desktop application built with **Go** (Backend) and **Wails** (Desktop GUI Framework).
 
 ![Wails](https://img.shields.io/badge/Wails-v2-red?style=flat-square&logo=wails)
 ![Go](https://img.shields.io/badge/Go-1.20+-00ADD8?style=flat-square&logo=go)
 ![NodeJS](https://img.shields.io/badge/Node.js-18+-339933?style=flat-square&logo=node.js)
 ![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)
 
-[Tiếng Việt](README_VN.md) | English
+[🇻🇳 Tiếng Việt](README_VN.md) | **🇬🇧 English**
 
-A lightweight, high-performance **Custom Proxy** management and routing desktop application built with **Go** (Backend) and **Wails** (Desktop GUI Framework).
+</div>
 
 ## 🚀 Key Features
 
