@@ -3,16 +3,18 @@
 ![Wails](https://img.shields.io/badge/Wails-v2-red?style=flat-square&logo=wails)
 ![Go](https://img.shields.io/badge/Go-1.20+-00ADD8?style=flat-square&logo=go)
 ![NodeJS](https://img.shields.io/badge/Node.js-18+-339933?style=flat-square&logo=node.js)
-![License](https://img.shields.io/badge/License-MIT-blue.style=flat-square)
+![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)
 
-Ứng dụng quản lý và điều hướng **Custom Proxy** nhẹ, hiệu năng cao được xây dựng trên nền tảng **Go** (Backend) và **Wails** (Desktop GUI Framework). 
+[Tiếng Việt](README_VN.md) | English
 
-## 🚀 Tính năng chính
+A lightweight, high-performance **Custom Proxy** management and routing desktop application built with **Go** (Backend) and **Wails** (Desktop GUI Framework).
 
-* **Hiệu năng cao & Mượt mà:** Sử dụng Backend Go thuần túy giúp xử lý luồng dữ liệu proxy nhanh chóng và tối ưu tài nguyên RAM/CPU.
-* **Giao diện hiện đại:** Giao diện người dùng nhẹ, dễ thao tác được tích hợp qua Wails.
-* **Cấu hình linh hoạt:** Dễ dàng thêm, chỉnh sửa và chuyển đổi qua lại giữa các node Proxy.
-* **Cross-platform:** Hỗ trợ đóng gói dễ dàng cho hệ điều hành Windows (và macOS/Linux).
+## 🚀 Key Features
+
+* **High Performance & Lightweight:** Powered by a pure Go backend for fast proxy data handling and optimized CPU/RAM usage.
+* **Modern Interface:** Sleek, user-friendly UI integrated seamlessly via Wails.
+* **Flexible Configuration:** Easily add, edit, and switch between proxy nodes on the fly.
+* **Cross-Platform:** Simple packaging and support for Windows (as well as macOS/Linux).
 
 ### 📸 Screenshot
 
@@ -30,14 +32,14 @@ Latest Release: **v1.0**
 
 ---
 
-## 🛠️ Yêu cầu hệ thống (Prerequisites)
+## 🛠️ Prerequisites
 
-Để phát triển hoặc build dự án từ nguồn, máy tính của bạn cần cài đặt sẵn:
+To develop or build the project from source, ensure you have the following installed:
 
-* **Go** (v1.20 trở lên)
-* **Node.js** (v18 trở lên) & **npm**
+* **Go** (v1.20 or higher)
+* **Node.js** (v18 or higher) & **npm**
 * **Wails CLI** (v2.x)
 
-Cài đặt Wails CLI nếu bạn chưa có:
+Install Wails CLI if you haven't already:
 ```bash
 go install [github.com/wailsapp/wails/v2/cmd/wails@latest](https://github.com/wailsapp/wails/v2/cmd/wails@latest)
