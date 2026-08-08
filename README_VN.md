@@ -1,13 +1,17 @@
-# Custom Proxy
+<div align="center">
+
+# 🚀 Custom Proxy
+
+Ứng dụng quản lý và điều hướng **Custom Proxy** nhẹ, hiệu năng cao được xây dựng trên nền tảng **Go** (Backend) và **Wails** (Desktop GUI Framework).
 
 ![Wails](https://img.shields.io/badge/Wails-v2-red?style=flat-square&logo=wails)
 ![Go](https://img.shields.io/badge/Go-1.20+-00ADD8?style=flat-square&logo=go)
 ![NodeJS](https://img.shields.io/badge/Node.js-18+-339933?style=flat-square&logo=node.js)
 ![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)
 
-Tiếng Việt | [English](README.md)
+[🇻🇳 Tiếng Việt](README_VN.md) | **🇬🇧 English**
 
-Ứng dụng quản lý và điều hướng **Custom Proxy** nhẹ, hiệu năng cao được xây dựng trên nền tảng **Go** (Backend) và **Wails** (Desktop GUI Framework).
+</div>
 
 ## 🚀 Tính năng chính
 
