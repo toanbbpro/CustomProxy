@@ -5,9 +5,9 @@
 ![NodeJS](https://img.shields.io/badge/Node.js-18+-339933?style=flat-square&logo=node.js)
 ![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)
 
-[Tiếng Việt](README_VN.md) | English
+<div align="center">[Tiếng Việt](README_VN.md) | English
 
-A lightweight, high-performance **Custom Proxy** management and routing desktop application built with **Go** (Backend) and **Wails** (Desktop GUI Framework).
+A lightweight, high-performance **Custom Proxy** management and routing desktop application built with **Go** (Backend) and **Wails** (Desktop GUI Framework).</div>
 
 ## 🚀 Key Features
 
