@@ -2,7 +2,7 @@
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
-    <title>Custom Proxy v1.0 - DPI Bypass</title>
+    <title>Custom Proxy</title>
     <style>
         body { font-family: "Segoe UI", Arial, sans-serif; background: #1b2838; color: #fff; display: flex; justify-content: center; padding-top: 15px; margin: 0; user-select: none; overflow: hidden; }
         .card { background: #2a475e; padding: 20px; border-radius: 8px; width: 400px; box-shadow: 0 4px 10px rgba(0,0,0,0.4); position: relative; }
@@ -98,6 +98,19 @@
         }
 
         const txtDomains = document.getElementById('txt_domains');
+
+        // BẮT SỰ KIỆN PASTE TỰ ĐỘNG FORMAT TEXT
+        txtDomains.addEventListener('paste', () => {
+            // setTimeout cho phép nội dung vừa paste render vào textarea trước khi parse
+            setTimeout(() => {
+                txtDomains.value = cleanDomains(txtDomains.value);
+            }, 10);
+        });
+
+        // BẮT SỰ KIỆN KHI CLICK CHUỘT RA NGOÀI TEXTBOX ĐỂ CLEAN CHẮC CHẮN 100%
+        txtDomains.addEventListener('blur', () => {
+            txtDomains.value = cleanDomains(txtDomains.value);
+        });
 
         // Trích xuất domain ngay trên frontend để hiển thị sạch sẽ
         function extractDomain(str) {

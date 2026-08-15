@@ -20,6 +20,8 @@ import (
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/options/windows"
+	"golang.org/x/sys/windows/svc"
 )
 
 //go:embed all:frontend/dist
@@ -54,6 +56,38 @@ var (
 	}
 )
 
+// ================= HỆ THỐNG GIAO TIẾP VỚI WINDOWS SERVICE =================
+type proxyService struct{}
+
+func (m *proxyService) Execute(args []string, r <-chan svc.ChangeRequest, changes chan<- svc.Status) (ssec bool, errno uint32) {
+	const cmdsAccepted = svc.AcceptStop | svc.AcceptShutdown
+	changes <- svc.Status{State: svc.StartPending}
+
+	// Chạy nền logic proxy khi khởi động cùng Windows
+	go func() {
+		domains := loadDomainsFromFile()
+		updateHosts(domains, true)
+		runProxy()
+	}()
+
+	changes <- svc.Status{State: svc.Running, Accepts: cmdsAccepted}
+
+	for c := range r {
+		switch c.Cmd {
+		case svc.Interrogate:
+			changes <- c.CurrentStatus
+		case svc.Stop, svc.Shutdown:
+			changes <- svc.Status{State: svc.StopPending}
+			stopProxy()
+			domains := loadDomainsFromFile()
+			updateHosts(domains, false)
+			return false, 0
+		default:
+		}
+	}
+	return false, 0
+}
+
 // ================= HỆ THỐNG KIỂM TRA & XIN QUYỀN ADMIN =================
 func checkAdmin() bool {
 	shell32 := syscall.NewLazyDLL("shell32.dll")
@@ -84,13 +118,20 @@ func elevateAdmin() {
 }
 
 func main() {
-	// 1. Nếu chưa có quyền Admin -> Ép tự khởi động lại với bảng hỏi UAC
+	// 0. Xác định nếu App đang bị kích hoạt bởi Windows Boot (chạy ngầm Service)
+	isWinService, err := svc.IsWindowsService()
+	if err == nil && isWinService {
+		_ = svc.Run("CustomProxyService", &proxyService{})
+		return
+	}
+
+	// 1. Nếu chưa có quyền Admin -> Ép tự khởi động lại với bảng hỏi UAC (Dành cho bản có GUI)
 	if !checkAdmin() {
 		elevateAdmin()
 		return
 	}
 
-	// 2. Chạy logic chính của App
+	// 2. Chạy logic chính của App có giao diện
 	app := NewApp()
 
 	go func() {
@@ -99,7 +140,14 @@ func main() {
 		runProxy()
 	}()
 
-	err := wails.Run(&options.App{
+	// Dùng thư mục ProgramData để không bị Edge Sandbox chặn khi chạy quyền SYSTEM
+	programData := os.Getenv("ProgramData")
+	if programData == "" {
+		programData = `C:\ProgramData` // Fallback an toàn
+	}
+	userDataPath := filepath.Join(programData, "CustomProxy_Data")
+
+	err = wails.Run(&options.App{
 		Title:  "Custom Proxy v1.0 - by ToanBB",
 		Width:  480,
 		Height: 540,
@@ -118,6 +166,9 @@ func main() {
 		},
 		Bind: []interface{}{
 			app,
+		},
+		Windows: &windows.Options{
+			WebviewUserDataPath: userDataPath,
 		},
 	})
 

@@ -112,23 +112,31 @@ func (a *App) ManageService(action string) string {
 	}
 
 	if action == "install" {
-		cmd1 := exec.Command("sc", "create", "CustomProxyService", "binPath=", exePath, "start=", "auto")
+		// Dùng cmd /c để chuỗi lệnh sc được Windows parse một cách chuẩn xác (quan trọng là binPath= "...")
+		cmdStr := fmt.Sprintf(`sc create CustomProxyService binPath= "%s" start= auto`, exePath)
+		cmd1 := exec.Command("cmd", "/c", cmdStr)
 		cmd1.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-		_ = cmd1.Run()
+		if err := cmd1.Run(); err != nil {
+			return "Lỗi tạo Service: " + err.Error()
+		}
 
-		cmd2 := exec.Command("sc", "start", "CustomProxyService")
+		cmd2 := exec.Command("cmd", "/c", "sc start CustomProxyService")
 		cmd2.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-		_ = cmd2.Run()
+		if err := cmd2.Run(); err != nil {
+			return "Đã cài Service nhưng chưa thể tự khởi động: " + err.Error()
+		}
 
 		return "Đã cài đặt Service thành công! / Service installed successfully!"
 	} else if action == "uninstall" {
-		cmd1 := exec.Command("sc", "stop", "CustomProxyService")
+		cmd1 := exec.Command("cmd", "/c", "sc stop CustomProxyService")
 		cmd1.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 		_ = cmd1.Run()
 
-		cmd2 := exec.Command("sc", "delete", "CustomProxyService")
+		cmd2 := exec.Command("cmd", "/c", "sc delete CustomProxyService")
 		cmd2.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-		_ = cmd2.Run()
+		if err := cmd2.Run(); err != nil {
+			return "Lỗi gỡ Service: " + err.Error()
+		}
 
 		return "Đã gỡ Service thành công! / Service uninstalled successfully!"
 	}
