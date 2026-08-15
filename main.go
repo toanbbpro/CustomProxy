@@ -33,7 +33,6 @@ var (
 	logFile       *os.File
 	logMutex      sync.Mutex
 
-	// Custom Transport cho HTTP Port 80 sử dụng DoH
 	customTransport = &http.Transport{
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			host, port, err := net.SplitHostPort(addr)
@@ -55,14 +54,12 @@ var (
 	}
 )
 
-// ================= HỆ THỐNG GIAO TIẾP VỚI WINDOWS SERVICE =================
 type proxyService struct{}
 
 func (m *proxyService) Execute(args []string, r <-chan svc.ChangeRequest, changes chan<- svc.Status) (ssec bool, errno uint32) {
 	const cmdsAccepted = svc.AcceptStop | svc.AcceptShutdown
 	changes <- svc.Status{State: svc.StartPending}
 
-	// Chạy nền logic proxy khi khởi động cùng Windows
 	go func() {
 		domains := loadDomainsFromFile()
 		updateHosts(domains, true)
@@ -87,7 +84,6 @@ func (m *proxyService) Execute(args []string, r <-chan svc.ChangeRequest, change
 	return false, 0
 }
 
-// ================= HỆ THỐNG KIỂM TRA & XIN QUYỀN ADMIN =================
 func checkAdmin() bool {
 	shell32 := syscall.NewLazyDLL("shell32.dll")
 	proc := shell32.NewProc("IsUserAnAdmin")
@@ -117,20 +113,17 @@ func elevateAdmin() {
 }
 
 func main() {
-	// 0. Xác định nếu App đang bị kích hoạt bởi Windows Boot (chạy ngầm Service)
 	isWinService, err := svc.IsWindowsService()
 	if err == nil && isWinService {
 		_ = svc.Run("CustomProxyService", &proxyService{})
 		return
 	}
 
-	// 1. Nếu chưa có quyền Admin -> Ép tự khởi động lại với bảng hỏi UAC (Dành cho bản có GUI)
 	if !checkAdmin() {
 		elevateAdmin()
 		return
 	}
 
-	// 2. Chạy logic chính của App có giao diện
 	app := NewApp()
 
 	go func() {
@@ -139,7 +132,6 @@ func main() {
 		runProxy()
 	}()
 
-	// Dùng thư mục ProgramData để không bị Edge Sandbox chặn khi chạy quyền SYSTEM
 	programData := os.Getenv("ProgramData")
 	if programData == "" {
 		programData = `C:\ProgramData` // Fallback an toàn
@@ -176,7 +168,6 @@ func main() {
 	}
 }
 
-// ================= HỆ THỐNG GHI LOG =================
 func writeLog(message string) {
 	if !isLogging {
 		return
@@ -220,7 +211,6 @@ func closeLogFile() {
 	}
 }
 
-// ================= LOGIC DNS OVER HTTPS (DoH) =================
 func resolveDoH(domain string) ([]string, error) {
 	url := fmt.Sprintf("https://cloudflare-dns.com/dns-query?name=%s&type=A", domain)
 	req, err := http.NewRequest("GET", url, nil)
@@ -260,7 +250,6 @@ func resolveDoH(domain string) ([]string, error) {
 	return ips, nil
 }
 
-// ================= LOGIC PROXY (HTTP & HTTPS SNI) & HOSTS =================
 func loadDomainsFromFile() []string {
 	data, err := os.ReadFile("domains.txt")
 	if err != nil {
@@ -413,9 +402,6 @@ func handleHTTPSConnection(clientConn net.Conn) {
 	}
 	defer targetConn.Close()
 
-	// =======================================================
-	// KỸ THUẬT DPI BYPASS (CHIA ĐỂ TRỊ MẠNH MẼ)
-	// =======================================================
 	chunkSize := 20
 	for i := 0; i < len(headerData); i += chunkSize {
 		end := i + chunkSize

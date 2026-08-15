@@ -106,7 +106,6 @@ func (a *App) ManageService(action string) string {
 	}
 
 	if action == "install" {
-		// Dùng cmd /c để chuỗi lệnh sc được Windows parse một cách chuẩn xác (quan trọng là binPath= "...")
 		cmdStr := fmt.Sprintf(`sc create CustomProxyService binPath= "%s" start= auto`, exePath)
 		cmd1 := exec.Command("cmd", "/c", cmdStr)
 		cmd1.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
