@@ -30,13 +30,11 @@ func (a *App) LoadDomains() string {
 	return string(data)
 }
 
-// extractDomain trích xuất hostname từ chuỗi URL hoặc domain
 func extractDomain(raw string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return ""
 	}
-	// Thêm scheme nếu thiếu để url.Parse hoạt động
 	if !strings.HasPrefix(raw, "http://") && !strings.HasPrefix(raw, "https://") {
 		raw = "https://" + raw
 	}
@@ -44,7 +42,6 @@ func extractDomain(raw string) string {
 	if err == nil && u.Hostname() != "" {
 		return strings.ToLower(u.Hostname())
 	}
-	// Fallback: lấy phần trước dấu '/' hoặc ':' đầu tiên
 	if idx := strings.IndexAny(raw, "/:?#"); idx != -1 {
 		host := strings.TrimPrefix(strings.SplitN(raw, "://", 2)[0], "")
 		if host != "" {
@@ -52,7 +49,6 @@ func extractDomain(raw string) string {
 		}
 		return strings.ToLower(raw[:idx])
 	}
-	// Nếu là domain thuần
 	return strings.ToLower(strings.TrimSuffix(strings.TrimPrefix(raw, "https://"), "http://"))
 }
 
@@ -71,13 +67,11 @@ func (a *App) SaveDomains(domainText string) string {
 
 	cleanedText := strings.Join(cleanDomains, "\n")
 
-	// Ghi file sạch
 	err := os.WriteFile("domains.txt", []byte(cleanedText), 0644)
 	if err != nil {
 		return "Lỗi khi lưu file: " + err.Error() + " / Error saving file: " + err.Error()
 	}
 
-	// Gọi updateHosts với danh sách đã làm sạch
 	updateHosts(cleanDomains, true)
 
 	return fmt.Sprintf("Đã lưu và áp dụng %d domain thành công! / Saved & applied %d domains successfully!", len(cleanDomains), len(cleanDomains))

@@ -24,7 +24,6 @@ import (
 	"golang.org/x/sys/windows/svc"
 )
 
-//go:embed all:frontend/dist
 var assets embed.FS
 
 var (
