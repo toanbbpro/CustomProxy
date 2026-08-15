@@ -134,7 +134,7 @@ func main() {
 
 	programData := os.Getenv("ProgramData")
 	if programData == "" {
-		programData = `C:\ProgramData` // Fallback an toàn
+		programData = `C:\ProgramData`
 	}
 	userDataPath := filepath.Join(programData, "CustomProxy_Data")
 
