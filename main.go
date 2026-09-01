@@ -21,20 +21,27 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
-	"golang.org/x/sys/windows/svc" // Khai báo package quản lý Windows Service
+	"golang.org/x/sys/windows/svc"
 )
 
 //go:embed all:frontend/dist
 var assets embed.FS
 
 var (
-	httpListener  net.Listener
-	httpsListener net.Listener
-	isLogging     bool
-	logFile       *os.File
-	logMutex      sync.Mutex
+	httpListener   net.Listener
+	httpsListener  net.Listener
+	isLogging      bool
+	isSteamEnabled bool // Biến cờ ghi nhận cấu hình Steam
+	logFile        *os.File
+	logMutex       sync.Mutex
 
-	// Custom Transport cho HTTP Port 80 sử dụng DoH
+	// Danh sách domain Steam lấy từ bản Steam Route Proxy
+	steamDomains = []string{
+		"steamcommunity.com", "store.steampowered.com", "checkout.steampowered.com",
+		"login.steampowered.com", "help.steampowered.com", "community.cloudflare.steamstatic.com",
+		"steamcommunity-a.akamaihd.net",
+	}
+
 	customTransport = &http.Transport{
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			host, port, err := net.SplitHostPort(addr)
@@ -56,6 +63,37 @@ var (
 	}
 )
 
+// ================= HỆ THỐNG QUẢN LÝ ĐƯỜNG DẪN TƯƠNG ĐỐI & CONFIG =================
+type AppConfig struct {
+	Logging bool `json:"logging"`
+	Steam   bool `json:"steam"`
+}
+
+// Trả về đường dẫn tuyệt đối chung thư mục với file .exe (rất quan trọng khi chạy Service)
+func getAppPath(filename string) string {
+	exe, err := os.Executable()
+	if err != nil {
+		return filename
+	}
+	return filepath.Join(filepath.Dir(exe), filename)
+}
+
+func loadConfig() {
+	data, err := os.ReadFile(getAppPath("config.json"))
+	if err == nil {
+		var c AppConfig
+		json.Unmarshal(data, &c)
+		isLogging = c.Logging
+		isSteamEnabled = c.Steam
+	}
+}
+
+func saveConfig() {
+	c := AppConfig{Logging: isLogging, Steam: isSteamEnabled}
+	data, _ := json.MarshalIndent(c, "", "  ")
+	_ = os.WriteFile(getAppPath("config.json"), data, 0644)
+}
+
 // ================= HỆ THỐNG GIAO TIẾP VỚI WINDOWS SERVICE =================
 type proxyService struct{}
 
@@ -63,7 +101,7 @@ func (m *proxyService) Execute(args []string, r <-chan svc.ChangeRequest, change
 	const cmdsAccepted = svc.AcceptStop | svc.AcceptShutdown
 	changes <- svc.Status{State: svc.StartPending}
 
-	// Chạy nền logic proxy khi khởi động cùng Windows
+	loadConfig() // Nạp cấu hình đã lưu
 	go func() {
 		domains := loadDomainsFromFile()
 		updateHosts(domains, true)
@@ -118,20 +156,18 @@ func elevateAdmin() {
 }
 
 func main() {
-	// 0. Xác định nếu App đang bị kích hoạt bởi Windows Boot (chạy ngầm Service)
 	isWinService, err := svc.IsWindowsService()
 	if err == nil && isWinService {
 		_ = svc.Run("CustomProxyService", &proxyService{})
 		return
 	}
 
-	// 1. Nếu chưa có quyền Admin -> Ép tự khởi động lại với bảng hỏi UAC (Dành cho bản có GUI)
 	if !checkAdmin() {
 		elevateAdmin()
 		return
 	}
 
-	// 2. Chạy logic chính của App có giao diện
+	loadConfig() // Nạp cấu hình lúc App GUI khởi động
 	app := NewApp()
 
 	go func() {
@@ -140,15 +176,14 @@ func main() {
 		runProxy()
 	}()
 
-	// Dùng thư mục ProgramData để không bị Edge Sandbox chặn khi chạy quyền SYSTEM
 	programData := os.Getenv("ProgramData")
 	if programData == "" {
-		programData = `C:\ProgramData` // Fallback an toàn
+		programData = `C:\ProgramData`
 	}
 	userDataPath := filepath.Join(programData, "CustomProxy_Data")
 
 	err = wails.Run(&options.App{
-		Title:  "Custom Proxy v1.2 - by ToanBB",
+		Title:  "Custom Proxy v1.3 - by ToanBB",
 		Width:  480,
 		Height: 540,
 		AssetServer: &assetserver.Options{
@@ -185,7 +220,7 @@ func writeLog(message string) {
 	logMutex.Lock()
 	defer logMutex.Unlock()
 
-	logDir := "logs"
+	logDir := getAppPath("logs")
 	_ = os.MkdirAll(logDir, 0755)
 
 	if logFile == nil {
@@ -263,10 +298,10 @@ func resolveDoH(domain string) ([]string, error) {
 
 // ================= LOGIC PROXY (HTTP & HTTPS SNI) & HOSTS =================
 func loadDomainsFromFile() []string {
-	data, err := os.ReadFile("domains.txt")
+	data, err := os.ReadFile(getAppPath("domains.txt"))
 	if err != nil {
 		defaultDomains := []string{"example.com", "api.example.com"}
-		_ = os.WriteFile("domains.txt", []byte("example.com\napi.example.com"), 0644)
+		_ = os.WriteFile(getAppPath("domains.txt"), []byte("example.com\napi.example.com"), 0644)
 		return defaultDomains
 	}
 
@@ -289,7 +324,8 @@ func updateHosts(domains []string, enable bool) {
 		return
 	}
 
-	lines := strings.Split(string(content), "\n")
+	// Đọc và loại bỏ ký tự \r để chống lỗi format của Windows
+	lines := strings.Split(strings.ReplaceAll(string(content), "\r\n", "\n"), "\n")
 	var newLines []string
 
 	for _, line := range lines {
@@ -299,20 +335,33 @@ func updateHosts(domains []string, enable bool) {
 	}
 
 	if enable {
-		for _, domain := range domains {
-			newLines = append(newLines, fmt.Sprintf("127.0.0.1 %s # CustomProxy", domain))
+		var activeDomains []string
+		activeDomains = append(activeDomains, domains...)
+
+		// Gộp domain Steam nếu đang bật cấu hình
+		if isSteamEnabled {
+			activeDomains = append(activeDomains, steamDomains...)
+		}
+
+		// Khử trùng lặp giữa file tùy chỉnh và list Steam
+		domainSet := make(map[string]bool)
+		for _, domain := range activeDomains {
+			domain = strings.TrimSpace(domain)
+			if domain != "" && !domainSet[domain] {
+				domainSet[domain] = true
+				newLines = append(newLines, fmt.Sprintf("127.0.0.1 %s # CustomProxy", domain))
+			}
 		}
 	}
 
-	output := strings.Join(newLines, "\n")
+	output := strings.Join(newLines, "\r\n") + "\r\n"
 	_ = os.WriteFile(hostsPath, []byte(output), 0644)
 
-	// Lệnh flushdns chạy ngầm (Ẩn cửa sổ)
 	cmd := exec.Command("ipconfig", "/flushdns")
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	_ = cmd.Run()
 
-	writeLog(fmt.Sprintf("Đã cập nhật file hosts (%d domains)", len(domains)))
+	writeLog(fmt.Sprintf("Đã cập nhật file hosts (Tổng số dòng: %d)", len(domains)))
 }
 
 func runProxy() {
@@ -414,9 +463,6 @@ func handleHTTPSConnection(clientConn net.Conn) {
 	}
 	defer targetConn.Close()
 
-	// =======================================================
-	// KỸ THUẬT DPI BYPASS (CHIA ĐỂ TRỊ MẠNH MẼ)
-	// =======================================================
 	chunkSize := 20
 	for i := 0; i < len(headerData); i += chunkSize {
 		end := i + chunkSize
@@ -523,7 +569,6 @@ func stopProxy() {
 }
 
 func IsServiceRunning() bool {
-	// Lệnh check service chạy ngầm (Ẩn cửa sổ)
 	cmd := exec.Command("sc", "query", "CustomProxyService")
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	out, err := cmd.Output()

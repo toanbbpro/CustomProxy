@@ -23,20 +23,18 @@ func (a *App) startup(ctx context.Context) {
 }
 
 func (a *App) LoadDomains() string {
-	data, err := os.ReadFile("domains.txt")
+	data, err := os.ReadFile(getAppPath("domains.txt"))
 	if err != nil {
 		return "example.com\napi.example.com"
 	}
 	return string(data)
 }
 
-// extractDomain trích xuất hostname từ chuỗi URL hoặc domain
 func extractDomain(raw string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return ""
 	}
-	// Thêm scheme nếu thiếu để url.Parse hoạt động
 	if !strings.HasPrefix(raw, "http://") && !strings.HasPrefix(raw, "https://") {
 		raw = "https://" + raw
 	}
@@ -44,7 +42,6 @@ func extractDomain(raw string) string {
 	if err == nil && u.Hostname() != "" {
 		return strings.ToLower(u.Hostname())
 	}
-	// Fallback: lấy phần trước dấu '/' hoặc ':' đầu tiên
 	if idx := strings.IndexAny(raw, "/:?#"); idx != -1 {
 		host := strings.TrimPrefix(strings.SplitN(raw, "://", 2)[0], "")
 		if host != "" {
@@ -52,7 +49,6 @@ func extractDomain(raw string) string {
 		}
 		return strings.ToLower(raw[:idx])
 	}
-	// Nếu là domain thuần
 	return strings.ToLower(strings.TrimSuffix(strings.TrimPrefix(raw, "https://"), "http://"))
 }
 
@@ -71,20 +67,27 @@ func (a *App) SaveDomains(domainText string) string {
 
 	cleanedText := strings.Join(cleanDomains, "\n")
 
-	// Ghi file sạch
-	err := os.WriteFile("domains.txt", []byte(cleanedText), 0644)
+	err := os.WriteFile(getAppPath("domains.txt"), []byte(cleanedText), 0644)
 	if err != nil {
 		return "Lỗi khi lưu file: " + err.Error() + " / Error saving file: " + err.Error()
 	}
 
-	// Gọi updateHosts với danh sách đã làm sạch
 	updateHosts(cleanDomains, true)
 
 	return fmt.Sprintf("Đã lưu và áp dụng %d domain thành công! / Saved & applied %d domains successfully!", len(cleanDomains), len(cleanDomains))
 }
 
+// Trả về cấu hình hiện tại cho UI Checkbox lúc khởi động
+func (a *App) GetConfig() map[string]bool {
+	return map[string]bool{
+		"steam":   isSteamEnabled,
+		"logging": isLogging,
+	}
+}
+
 func (a *App) ToggleLogging(enable bool) string {
 	isLogging = enable
+	saveConfig()
 	if enable {
 		writeLog("Bắt đầu ghi file Log...")
 		return "Đã bật ghi file Log! / Logging enabled!"
@@ -93,8 +96,25 @@ func (a *App) ToggleLogging(enable bool) string {
 	return "Đã tắt ghi file Log! / Logging disabled!"
 }
 
+// Logic bật/tắt Steam Proxy
+func (a *App) ToggleSteamProxy(enable bool) string {
+	isSteamEnabled = enable
+	saveConfig() // Lưu lại lựa chọn
+
+	// Cập nhật lại file hosts ngay lập tức
+	domains := loadDomainsFromFile()
+	updateHosts(domains, true)
+
+	if enable {
+		writeLog("Đã gộp cấu hình Steam vào Proxy chung")
+		return "Đã kích hoạt và áp dụng Steam Proxy! / Steam Proxy enabled!"
+	}
+	writeLog("Đã gỡ cấu hình Steam khỏi Proxy")
+	return "Đã tắt Steam Proxy! / Steam Proxy disabled!"
+}
+
 func (a *App) OpenLogFolder() {
-	logDir := "logs"
+	logDir := getAppPath("logs")
 	_ = os.MkdirAll(logDir, 0755)
 	_ = exec.Command("explorer", logDir).Start()
 }
@@ -112,7 +132,6 @@ func (a *App) ManageService(action string) string {
 	}
 
 	if action == "install" {
-		// Dùng cmd /c để chuỗi lệnh sc được Windows parse một cách chuẩn xác (quan trọng là binPath= "...")
 		cmdStr := fmt.Sprintf(`sc create CustomProxyService binPath= "%s" start= auto`, exePath)
 		cmd1 := exec.Command("cmd", "/c", cmdStr)
 		cmd1.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}

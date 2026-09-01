@@ -2,10 +2,10 @@
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
-    <title>Custom Proxy</title>
+    <title>Custom Proxy v1.3 - DPI Bypass</title>
     <style>
         body { font-family: "Segoe UI", Arial, sans-serif; background: #1b2838; color: #fff; display: flex; justify-content: center; padding-top: 15px; margin: 0; user-select: none; overflow: hidden; }
-        .card { background: #2a475e; padding: 20px; border-radius: 8px; width: 400px; box-shadow: 0 4px 10px rgba(0,0,0,0.4); position: relative; }
+        .card { background: #2a475e; padding: 20px; border-radius: 8px; width: 480px; box-shadow: 0 4px 10px rgba(0,0,0,0.4); position: relative; }
         .lang-switch { position: absolute; top: 15px; right: 20px; }
         .lang-flag-btn { background: #1b2838; border: 1px solid #3c5a75; padding: 5px 8px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease; }
         .lang-flag-btn svg { width: 22px; height: 15px; border-radius: 2px; display: block; }
@@ -42,17 +42,20 @@
         <div class="lang-switch">
             <button class="lang-flag-btn" id="btn-lang-toggle" onclick="toggleLanguage()"></button>
         </div>
-        <h2 id="lbl_title">Custom Proxy</h2>
+        <h2 id="lbl_title">Custom Proxy v1.3</h2>
         <div class="status-badge" id="lbl_status">● Dịch vụ Proxy đang hoạt động</div>
         <div class="domain-box">
             <label id="lbl_domains_title">Danh sách Domain (Mỗi dòng 1 domain):</label>
             <textarea id="txt_domains" class="domain-textarea" placeholder="example.com&#10;api.example.com"></textarea>
             <button class="btn-save-domain" onclick="saveCustomDomains()" id="btn_save_domain">Lưu & Áp Dụng Domain</button>
         </div>
+        
         <div class="row">
-            <label><input type="checkbox" id="enableLog" onchange="toggleLog(this)"> <span id="lbl_log">Ghi file Log</span></label>
-            <button class="btn-action" onclick="openLogFolder()" id="btn_open_log">Mở Thư Mục</button>
+            <label><input type="checkbox" id="enableSteam" onchange="toggleSteam(this)"> <span id="lbl_steam">Bật Steam Proxy</span></label>
+            <label style="margin-left:auto; margin-right:15px;"><input type="checkbox" id="enableLog" onchange="toggleLog(this)"> <span id="lbl_log">Ghi Log</span></label>
+            <button class="btn-action" onclick="openLogFolder()" id="btn_open_log">Mở Thư Mục Log</button>
         </div>
+
         <div class="service-group">
             <button class="btn-action btn-install" onclick="manageService('install')" id="btn_install">Cài Service Tự Khởi Động</button>
             <button class="btn-action btn-uninstall" onclick="manageService('uninstall')" id="btn_uninstall">Gỡ Service</button>
@@ -74,8 +77,8 @@
             en: `<svg viewBox="0 0 741 390"><rect width="741" height="390" fill="#b22234"/><path d="M0,30H741M0,90H741M0,150H741M0,210H741M0,270H741M0,330H741" stroke="#fff" stroke-width="30"/><rect width="296.4" height="210" fill="#3c3b6e"/></svg>`
         };
         const i18n = {
-            vi: { title: "Custom Proxy", status: "● Dịch vụ Proxy đang hoạt động", domains_title: "Danh sách Domain (Mỗi dòng 1 domain):", save_domain: "Lưu & Áp Dụng Domain", log: "Ghi file Log", open_log: "Mở Thư Mục", install: "Cài Service Tự Khởi Động", uninstall: "Gỡ Service", modal_title: "Thông Báo", homepage: "Trang chủ (GitHub)" },
-            en: { title: "Custom Proxy", status: "● Proxy Service is Running", domains_title: "Domain List (One per line):", save_domain: "Save & Apply Domains", log: "Enable Logging", open_log: "Open Folder", install: "Install Auto-Start Service", uninstall: "Uninstall Service", modal_title: "Notification", homepage: "Homepage (GitHub)" }
+            vi: { title: "Custom Proxy v1.3", status: "● Dịch vụ Proxy đang hoạt động", domains_title: "Danh sách Domain (Mỗi dòng 1 domain):", save_domain: "Lưu & Áp Dụng Domain", log: "Ghi Log", steam: "Tích hợp Steam Proxy", open_log: "Mở Thư Mục Log", install: "Cài Service", uninstall: "Gỡ Service", modal_title: "Thông Báo", homepage: "Trang chủ (GitHub)" },
+            en: { title: "Custom Proxy v1.3", status: "● Proxy Service is Running", domains_title: "Domain List (One per line):", save_domain: "Save & Apply Domains", log: "Logging", steam: "Enable Steam Proxy", open_log: "Open Log Folder", install: "Install Service", uninstall: "Uninstall Service", modal_title: "Notification", homepage: "Homepage (GitHub)" }
         };
 
         function toggleLanguage() {
@@ -89,6 +92,7 @@
             document.getElementById("lbl_domains_title").innerText = i18n[lang].domains_title;
             document.getElementById("btn_save_domain").innerText = i18n[lang].save_domain;
             document.getElementById("lbl_log").innerText = i18n[lang].log;
+            document.getElementById("lbl_steam").innerText = i18n[lang].steam;
             document.getElementById("btn_open_log").innerText = i18n[lang].open_log;
             document.getElementById("btn_install").innerText = i18n[lang].install;
             document.getElementById("btn_uninstall").innerText = i18n[lang].uninstall;
@@ -99,20 +103,13 @@
 
         const txtDomains = document.getElementById('txt_domains');
 
-        // BẮT SỰ KIỆN PASTE TỰ ĐỘNG FORMAT TEXT
         txtDomains.addEventListener('paste', () => {
-            // setTimeout cho phép nội dung vừa paste render vào textarea trước khi parse
-            setTimeout(() => {
-                txtDomains.value = cleanDomains(txtDomains.value);
-            }, 10);
+            setTimeout(() => { txtDomains.value = cleanDomains(txtDomains.value); }, 10);
         });
-
-        // BẮT SỰ KIỆN KHI CLICK CHUỘT RA NGOÀI TEXTBOX ĐỂ CLEAN CHẮC CHẮN 100%
         txtDomains.addEventListener('blur', () => {
             txtDomains.value = cleanDomains(txtDomains.value);
         });
 
-        // Trích xuất domain ngay trên frontend để hiển thị sạch sẽ
         function extractDomain(str) {
             str = str.trim();
             if (!str) return null;
@@ -146,13 +143,18 @@
             try {
                 let domains = await window.go.main.App.LoadDomains();
                 txtDomains.value = domains;
+                
+                // Đồng bộ Checkbox với Config Backend
+                let config = await window.go.main.App.GetConfig();
+                document.getElementById('enableSteam').checked = config.steam;
+                document.getElementById('enableLog').checked = config.logging;
             } catch (e) {}
         };
 
         async function saveCustomDomains() {
             let raw = txtDomains.value;
             let cleaned = cleanDomains(raw);
-            txtDomains.value = cleaned; // Hiển thị đẹp
+            txtDomains.value = cleaned; 
             let res = await window.go.main.App.SaveDomains(cleaned);
             showModal(res);
         }
@@ -164,6 +166,10 @@
         function closeModal() { document.getElementById("custom-modal").classList.add("hidden"); }
         async function toggleLog(cb) {
             let res = await window.go.main.App.ToggleLogging(cb.checked);
+            showModal(res);
+        }
+        async function toggleSteam(cb) {
+            let res = await window.go.main.App.ToggleSteamProxy(cb.checked);
             showModal(res);
         }
         function manageService(action) { window.go.main.App.ManageService(action).then(res => showModal(res)); }
