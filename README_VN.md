@@ -17,6 +17,7 @@
 
 * **Hiệu năng cao & Mượt mà:** Sử dụng Backend Go thuần túy giúp xử lý luồng dữ liệu proxy nhanh chóng và tối ưu tài nguyên RAM/CPU.
 * **Giao diện hiện đại:** Giao diện người dùng nhẹ, dễ thao tác được tích hợp qua Wails.
+* **Thao tác thuận tiện:** Paste URL vào list, tự động chuyển thành domain khi ấn lưu danh sách.
 * **Cấu hình linh hoạt:** Dễ dàng thêm, chỉnh sửa và chuyển đổi qua lại giữa các node Proxy.
 * **Cross-platform:** Hỗ trợ đóng gói dễ dàng cho hệ điều hành Windows (và macOS/Linux).
 
@@ -28,11 +29,9 @@
 
 ---
 
-### 📥 Download
+### 📥 Tải về
 
-Latest Release: **v1.0**
-
-👉 **[Download CustomProxy.zip (GitHub Releases)](https://github.com/toanbbpro/CustomProxy/releases/latest)**
+👉 **[Download CustomProxy-xxx.zip (GitHub Releases)](https://github.com/toanbbpro/CustomProxy/releases/latest)**
 
 ---
 
