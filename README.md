@@ -17,6 +17,7 @@ A lightweight, high-performance **Custom Proxy** management and routing desktop 
 
 * **High Performance & Lightweight:** Powered by a pure Go backend for fast proxy data handling and optimized CPU/RAM usage.
 * **Modern Interface:** Sleek, user-friendly UI integrated seamlessly via Wails.
+* **Instant feature:** Paste URL to list, auto change to domain when hit Save.
 * **Flexible Configuration:** Easily add, edit, and switch between proxy nodes on the fly.
 * **Cross-Platform:** Simple packaging and support for Windows (as well as macOS/Linux).
 
@@ -30,9 +31,7 @@ A lightweight, high-performance **Custom Proxy** management and routing desktop 
 
 ### 📥 Download
 
-Latest Release: **v1.0**
-
-👉 **[Download CustomProxy.zip (GitHub Releases)](https://github.com/toanbbpro/CustomProxy/releases/latest)**
+👉 **[Download CustomProxy-xxx.zip (GitHub Releases)](https://github.com/toanbbpro/CustomProxy/releases/latest)**
 
 ---
 
