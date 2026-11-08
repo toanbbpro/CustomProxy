@@ -41,15 +41,14 @@ var (
 		"steamcommunity-a.akamaihd.net",
 	}
 
-	// IP ưu tiên cho domain bị chặn nặng (dùng cho công cụ chẩn đoán)
+	// IP ưu tiên cho domain bị chặn nặng (dùng cho công cụ chẩn đoán và dự phòng)
 	staticCleanIPs = map[string][]string{
 		"steamcommunity.com": {
 			"23.53.209.18",
-			"23.52.74.146",
 		},
 		"store.steampowered.com": {
+			"23.53.210.94",
 			"23.53.209.18",
-			"23.52.74.146",
 		},
 	}
 
