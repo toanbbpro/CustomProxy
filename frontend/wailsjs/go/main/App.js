@@ -26,6 +26,14 @@ export function SaveDomains(arg1) {
   return window['go']['main']['App']['SaveDomains'](arg1);
 }
 
+export function TestDoHForDomain(arg1) {
+  return window['go']['main']['App']['TestDoHForDomain'](arg1);
+}
+
+export function TestDomainStaticIPs(arg1) {
+  return window['go']['main']['App']['TestDomainStaticIPs'](arg1);
+}
+
 export function ToggleLogging(arg1) {
   return window['go']['main']['App']['ToggleLogging'](arg1);
 }

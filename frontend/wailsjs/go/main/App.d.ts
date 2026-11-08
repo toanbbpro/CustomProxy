@@ -13,6 +13,10 @@ export function OpenLogFolder():Promise<void>;
 
 export function SaveDomains(arg1:string):Promise<string>;
 
+export function TestDoHForDomain(arg1:string):Promise<string>;
+
+export function TestDomainStaticIPs(arg1:string):Promise<string>;
+
 export function ToggleLogging(arg1:boolean):Promise<string>;
 
 export function ToggleSteamProxy(arg1:boolean):Promise<string>;

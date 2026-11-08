@@ -1,0 +1,67 @@
+name: Release Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+      - '[0-9]+.[0-9]+.[0-9]+*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build & Release Windows App
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+          cache: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Sync Version from Git Tag
+        shell: pwsh
+        run: |
+          $ver = "${{ github.ref_name }}".TrimStart('v')
+          if ($ver -match '^\d+\.\d+') {
+            $info = Get-Content build/windows/info.json | ConvertFrom-Json
+            $info.fixed.file_version = if ($ver.Split('.').Count -eq 3) { "$ver.0" } else { $ver }
+            $info.fixed.product_version = $info.fixed.file_version
+            $info.info.'0409'.ProductVersion = $ver
+            $info.info.'0409'.FileVersion = $ver
+            $info | ConvertTo-Json -Depth 10 | Set-Content build/windows/info.json
+
+            $wails = Get-Content wails.json | ConvertFrom-Json
+            $wails.info.productVersion = $ver
+            $wails | ConvertTo-Json -Depth 10 | Set-Content wails.json
+            Write-Host "Sync version to $ver successfully"
+          }
+
+      - name: Build Application with Wails
+        run: wails build -platform windows/amd64
+
+      - name: Package Release ZIP
+        shell: pwsh
+        run: |
+          Compress-Archive -Path build/bin/CustomProxy.exe, domains.txt -DestinationPath CustomProxy-Windows-x64.zip
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: CustomProxy-Windows-x64.zip
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

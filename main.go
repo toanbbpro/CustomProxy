@@ -31,16 +31,28 @@ var (
 	httpListener   net.Listener
 	httpsListener  net.Listener
 	isLogging      bool
-	isSteamEnabled bool // Biến cờ ghi nhận cấu hình Steam
+	isSteamEnabled bool
 	logFile        *os.File
 	logMutex       sync.Mutex
 
-	// Danh sách domain Steam lấy từ bản Steam Route Proxy
 	steamDomains = []string{
 		"steamcommunity.com", "store.steampowered.com", "checkout.steampowered.com",
 		"login.steampowered.com", "help.steampowered.com", "community.cloudflare.steamstatic.com",
 		"steamcommunity-a.akamaihd.net",
 	}
+
+	// IP ưu tiên cho domain bị chặn nặng (dùng cho công cụ chẩn đoán)
+	staticCleanIPs = map[string][]string{
+		"steamcommunity.com": {
+			"23.53.209.18",
+			"23.52.74.146",
+		},
+		"store.steampowered.com": {
+			"23.53.209.18",
+			"23.52.74.146",
+		},
+	}
+
 
 	customTransport = &http.Transport{
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -48,11 +60,11 @@ var (
 			if err != nil {
 				return nil, err
 			}
-			ips, err := resolveDoH(host)
-			if err != nil || len(ips) == 0 {
-				return nil, fmt.Errorf("không phân giải được IP bằng DoH cho %s: %v", host, err)
-			}
 			dialer := &net.Dialer{Timeout: 5 * time.Second}
+			ips := collectCandidateIPs(host)
+			if len(ips) == 0 {
+				return nil, fmt.Errorf("không có IP cho %s", host)
+			}
 			return dialer.DialContext(ctx, network, net.JoinHostPort(ips[0], port))
 		},
 		ResponseHeaderTimeout: 15 * time.Second,
@@ -69,7 +81,6 @@ type AppConfig struct {
 	Steam   bool `json:"steam"`
 }
 
-// Trả về đường dẫn tuyệt đối chung thư mục với file .exe (rất quan trọng khi chạy Service)
 func getAppPath(filename string) string {
 	exe, err := os.Executable()
 	if err != nil {
@@ -94,14 +105,14 @@ func saveConfig() {
 	_ = os.WriteFile(getAppPath("config.json"), data, 0644)
 }
 
-// ================= HỆ THỐNG GIAO TIẾP VỚI WINDOWS SERVICE =================
+// ================= GIAO TIẾP WINDOWS SERVICE =================
 type proxyService struct{}
 
 func (m *proxyService) Execute(args []string, r <-chan svc.ChangeRequest, changes chan<- svc.Status) (ssec bool, errno uint32) {
 	const cmdsAccepted = svc.AcceptStop | svc.AcceptShutdown
 	changes <- svc.Status{State: svc.StartPending}
 
-	loadConfig() // Nạp cấu hình đã lưu
+	loadConfig()
 	go func() {
 		domains := loadDomainsFromFile()
 		updateHosts(domains, true)
@@ -120,13 +131,12 @@ func (m *proxyService) Execute(args []string, r <-chan svc.ChangeRequest, change
 			domains := loadDomainsFromFile()
 			updateHosts(domains, false)
 			return false, 0
-		default:
 		}
 	}
 	return false, 0
 }
 
-// ================= HỆ THỐNG KIỂM TRA & XIN QUYỀN ADMIN =================
+// ================= ADMIN =================
 func checkAdmin() bool {
 	shell32 := syscall.NewLazyDLL("shell32.dll")
 	proc := shell32.NewProc("IsUserAnAdmin")
@@ -144,13 +154,12 @@ func elevateAdmin() {
 
 	shell32 := syscall.NewLazyDLL("shell32.dll")
 	proc := shell32.NewProc("ShellExecuteW")
-	proc.Call(
-		0,
+	proc.Call(0,
 		uintptr(unsafe.Pointer(verb)),
 		uintptr(unsafe.Pointer(exePtr)),
 		uintptr(unsafe.Pointer(argPtr)),
 		uintptr(unsafe.Pointer(cwdPtr)),
-		1, // SW_NORMAL
+		1,
 	)
 	os.Exit(0)
 }
@@ -167,7 +176,7 @@ func main() {
 		return
 	}
 
-	loadConfig() // Nạp cấu hình lúc App GUI khởi động
+	loadConfig()
 	app := NewApp()
 
 	go func() {
@@ -183,12 +192,11 @@ func main() {
 	userDataPath := filepath.Join(programData, "CustomProxy_Data")
 
 	err = wails.Run(&options.App{
-		Title:  "Custom Proxy v1.3 - by ToanBB",
-		Width:  480,
-		Height: 540,
-		AssetServer: &assetserver.Options{
-			Assets: assets,
-		},
+		Title:            "Custom Proxy v1.4.0 - by ToanBB",
+		Width:            520,
+		Height:           520,
+		DisableResize:    true,
+		AssetServer:      &assetserver.Options{Assets: assets},
 		BackgroundColour: &options.RGBA{R: 27, G: 40, B: 56, A: 1},
 		OnStartup:        app.startup,
 		OnShutdown: func(ctx context.Context) {
@@ -199,12 +207,8 @@ func main() {
 				updateHosts(domains, false)
 			}
 		},
-		Bind: []interface{}{
-			app,
-		},
-		Windows: &windows.Options{
-			WebviewUserDataPath: userDataPath,
-		},
+		Bind:    []interface{}{app},
+		Windows: &windows.Options{WebviewUserDataPath: userDataPath},
 	})
 
 	if err != nil {
@@ -212,7 +216,7 @@ func main() {
 	}
 }
 
-// ================= HỆ THỐNG GHI LOG =================
+// ================= GHI LOG =================
 func writeLog(message string) {
 	if !isLogging {
 		return
@@ -256,58 +260,162 @@ func closeLogFile() {
 	}
 }
 
-// ================= LOGIC DNS OVER HTTPS (DoH) =================
+// ================= DNS OVER HTTPS (SONG SONG NHIỀU SERVER + ĐA VÙNG ECS) =================
+var dohClient = &http.Client{
+	Timeout: 5 * time.Second,
+	Transport: &http.Transport{
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			dialer := &net.Dialer{Timeout: 3 * time.Second}
+			switch addr {
+			case "cloudflare-dns.com:443":
+				return dialer.DialContext(ctx, network, "104.16.249.249:443")
+			case "dns.google:443":
+				return dialer.DialContext(ctx, network, "8.8.8.8:443")
+			case "dns.alidns.com:443":
+				return dialer.DialContext(ctx, network, "223.5.5.5:443")
+			}
+			return dialer.DialContext(ctx, network, addr)
+		},
+	},
+}
+
 func resolveDoH(domain string) ([]string, error) {
-	url := fmt.Sprintf("https://cloudflare-dns.com/dns-query?name=%s&type=A", domain)
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Accept", "application/dns-json")
-
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	var result struct {
-		Answer []struct {
-			Data string `json:"data"`
-			Type int    `json:"type"`
-		} `json:"Answer"`
+	// Kết hợp DoH nội địa và DoH kèm subnet quốc tế (ECS) để chống triệt để ISP đổi dải IP chặn
+	servers := []string{
+		"https://dns.google/resolve?name=%s&type=A",
+		"https://dns.google/resolve?name=%s&type=A&edns_client_subnet=1.0.0.0/24",
+		"https://cloudflare-dns.com/dns-query?name=%s&type=A",
+		"https://dns.alidns.com/resolve?name=%s&type=1",
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, err
+	type res struct {
+		ips []string
+		err error
 	}
 
-	var ips []string
-	for _, a := range result.Answer {
-		if a.Type == 1 {
-			ips = append(ips, a.Data)
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+
+	resCh := make(chan res, len(servers))
+	for _, s := range servers {
+		go func(endpoint string) {
+			url := fmt.Sprintf(endpoint, domain)
+			req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+			if err != nil {
+				resCh <- res{nil, err}
+				return
+			}
+			req.Header.Set("Accept", "application/dns-json")
+			resp, err := dohClient.Do(req)
+			if err != nil {
+				resCh <- res{nil, err}
+				return
+			}
+			defer resp.Body.Close()
+			var parsed struct {
+				Answer []struct {
+					Data string `json:"data"`
+					Type int    `json:"type"`
+				} `json:"Answer"`
+			}
+			if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
+				resCh <- res{nil, err}
+				return
+			}
+			var ips []string
+			for _, a := range parsed.Answer {
+				if a.Type == 1 && !strings.HasPrefix(a.Data, "127.") && !strings.Contains(a.Data, ":") {
+					ips = append(ips, a.Data)
+				}
+			}
+			resCh <- res{ips, nil}
+		}(s)
+	}
+
+	ipSet := make(map[string]bool)
+	var all []string
+	for i := 0; i < len(servers); i++ {
+		select {
+		case r := <-resCh:
+			for _, ip := range r.ips {
+				if !ipSet[ip] {
+					ipSet[ip] = true
+					all = append(all, ip)
+				}
+			}
+		case <-ctx.Done():
+			i = len(servers)
 		}
 	}
 
-	if len(ips) == 0 {
-		return nil, fmt.Errorf("không tìm thấy IP nào")
+	if len(all) > 0 {
+		writeLog(fmt.Sprintf("[DNS] %s -> %d IP (gộp từ DoH đa vùng)", domain, len(all)))
+		return all, nil
 	}
-	return ips, nil
+
+	// Fallback UDP
+	writeLog(fmt.Sprintf("[DNS-WARN] Toàn bộ DoH thất bại cho %s, dùng UDP 53", domain))
+	r := &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+			d := net.Dialer{Timeout: 3 * time.Second}
+			return d.DialContext(ctx, "udp", "8.8.4.4:53")
+		},
+	}
+	ips, err := r.LookupHost(context.Background(), domain)
+	if err == nil && len(ips) > 0 {
+		var v4 []string
+		for _, ip := range ips {
+			if strings.Contains(ip, ".") && ip != "127.0.0.1" {
+				v4 = append(v4, ip)
+			}
+		}
+		if len(v4) > 0 {
+			return v4, nil
+		}
+	}
+	return nil, fmt.Errorf("DNS thất bại hoàn toàn")
 }
 
-// ================= LOGIC PROXY (HTTP & HTTPS SNI) & HOSTS =================
+// Lấy danh sách IP ứng viên từ DoH đa vùng (không block verify đồng bộ)
+func collectCandidateIPs(domain string) []string {
+	var result []string
+	seen := make(map[string]bool)
+
+	// 1. Lấy danh sách IP từ DoH (Google, Google ECS US, Cloudflare, AliDNS)
+	dohIPs, err := resolveDoH(domain)
+	if err == nil {
+		for _, ip := range dohIPs {
+			if !seen[ip] {
+				seen[ip] = true
+				result = append(result, ip)
+			}
+		}
+	}
+
+	// 2. Dự phòng: nếu DoH không trả IP nào, dùng danh sách IP tĩnh có sẵn
+	if len(result) == 0 {
+		if statics, ok := staticCleanIPs[domain]; ok {
+			for _, ip := range statics {
+				if !seen[ip] {
+					seen[ip] = true
+					result = append(result, ip)
+				}
+			}
+		}
+	}
+	return result
+}
+
+// ================= HOSTS =================
 func loadDomainsFromFile() []string {
 	data, err := os.ReadFile(getAppPath("domains.txt"))
 	if err != nil {
-		defaultDomains := []string{"example.com", "api.example.com"}
 		_ = os.WriteFile(getAppPath("domains.txt"), []byte("example.com\napi.example.com"), 0644)
-		return defaultDomains
+		return []string{"example.com", "api.example.com"}
 	}
-
-	lines := strings.Split(string(data), "\n")
 	var domains []string
-	for _, line := range lines {
+	for _, line := range strings.Split(string(data), "\n") {
 		trimmed := strings.TrimSpace(line)
 		if trimmed != "" && !strings.HasPrefix(trimmed, "#") {
 			domains = append(domains, trimmed)
@@ -324,10 +432,8 @@ func updateHosts(domains []string, enable bool) {
 		return
 	}
 
-	// Đọc và loại bỏ ký tự \r để chống lỗi format của Windows
 	lines := strings.Split(strings.ReplaceAll(string(content), "\r\n", "\n"), "\n")
 	var newLines []string
-
 	for _, line := range lines {
 		if !strings.Contains(line, "# CustomProxy") {
 			newLines = append(newLines, line)
@@ -335,21 +441,16 @@ func updateHosts(domains []string, enable bool) {
 	}
 
 	if enable {
-		var activeDomains []string
-		activeDomains = append(activeDomains, domains...)
-
-		// Gộp domain Steam nếu đang bật cấu hình
+		active := append([]string{}, domains...)
 		if isSteamEnabled {
-			activeDomains = append(activeDomains, steamDomains...)
+			active = append(active, steamDomains...)
 		}
-
-		// Khử trùng lặp giữa file tùy chỉnh và list Steam
-		domainSet := make(map[string]bool)
-		for _, domain := range activeDomains {
-			domain = strings.TrimSpace(domain)
-			if domain != "" && !domainSet[domain] {
-				domainSet[domain] = true
-				newLines = append(newLines, fmt.Sprintf("127.0.0.1 %s # CustomProxy", domain))
+		set := make(map[string]bool)
+		for _, d := range active {
+			d = strings.TrimSpace(d)
+			if d != "" && !set[d] {
+				set[d] = true
+				newLines = append(newLines, fmt.Sprintf("127.0.0.1 %s # CustomProxy", d))
 			}
 		}
 	}
@@ -364,18 +465,18 @@ func updateHosts(domains []string, enable bool) {
 	writeLog(fmt.Sprintf("Đã cập nhật file hosts (Tổng số dòng: %d)", len(domains)))
 }
 
+// ================= PROXY SERVER =================
 func runProxy() {
 	var err error
 
 	httpListener, err = net.Listen("tcp", "127.0.0.1:80")
 	if err == nil {
-		writeLog("HTTP Proxy đang lắng nghe trên cổng 80...")
+		writeLog("HTTP Proxy lắng nghe cổng 80...")
 		go http.Serve(httpListener, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
 			r.RequestURI = ""
 			r.URL.Scheme = "https"
 			r.URL.Host = r.Host
-
 			resp, err := customHTTPClient.Do(r)
 			if err != nil {
 				writeLog(fmt.Sprintf("[HTTP-ERR] %s %s -> %v", r.Method, r.Host, err))
@@ -383,19 +484,19 @@ func runProxy() {
 				return
 			}
 			defer resp.Body.Close()
-
 			for k, v := range resp.Header {
 				w.Header()[k] = v
 			}
 			w.WriteHeader(resp.StatusCode)
 			written, _ := io.Copy(w, resp.Body)
-			writeLog(fmt.Sprintf("[HTTP] %s http://%s%s -> %d (%d bytes, %v)", r.Method, r.Host, r.URL.Path, resp.StatusCode, written, time.Since(start)))
+			writeLog(fmt.Sprintf("[HTTP] %s http://%s%s -> %d (%d bytes, %v)",
+				r.Method, r.Host, r.URL.Path, resp.StatusCode, written, time.Since(start)))
 		}))
 	}
 
 	httpsListener, err = net.Listen("tcp", "127.0.0.1:443")
 	if err == nil {
-		writeLog("HTTPS SNI Proxy đang lắng nghe trên cổng 443...")
+		writeLog("HTTPS SNI Proxy lắng nghe cổng 443...")
 		go func() {
 			for {
 				clientConn, err := httpsListener.Accept()
@@ -411,77 +512,95 @@ func runProxy() {
 func handleHTTPSConnection(clientConn net.Conn) {
 	defer clientConn.Close()
 
-	_ = clientConn.SetReadDeadline(time.Now().Add(4 * time.Second))
-	buf := make([]byte, 8192)
-	n, err := clientConn.Read(buf)
-	if err != nil || n == 0 {
+	headerData, serverName := readClientHello(clientConn)
+	if len(headerData) == 0 {
 		return
 	}
-	headerData := buf[:n]
-
-	if len(headerData) >= 5 && headerData[0] == 0x16 {
-		recordLen := int(headerData[3])<<8 | int(headerData[4])
-		expectedTotal := 5 + recordLen
-		for len(headerData) < expectedTotal && len(headerData) < 16384 {
-			tmp := make([]byte, 2048)
-			_ = clientConn.SetReadDeadline(time.Now().Add(1 * time.Second))
-			n2, err2 := clientConn.Read(tmp)
-			if err2 != nil || n2 == 0 {
-				break
-			}
-			headerData = append(headerData, tmp[:n2]...)
-		}
-	}
-	_ = clientConn.SetReadDeadline(time.Time{})
-
-	serverName := extractSNI(headerData)
 	if serverName == "" {
-		writeLog("[HTTPS-ERR] Không thể bóc tách SNI từ trình duyệt")
+		serverName = "steamcommunity.com"
+	}
+
+	ips := collectCandidateIPs(serverName)
+	if len(ips) == 0 {
+		writeLog(fmt.Sprintf("[HTTPS-ERR] Không có IP khả dụng cho %s", serverName))
 		return
 	}
 
-	ips, err := resolveDoH(serverName)
-	if err != nil || len(ips) == 0 {
-		writeLog(fmt.Sprintf("[HTTPS-ERR] DNS DoH thất bại cho %s: %v", serverName, err))
-		return
+	writeLog(fmt.Sprintf("[DEBUG] %s -> đua %d IP...", serverName, len(ips)))
+
+	// Fast-Dial: Đua tất cả IP song song, IP nào hoàn thành 3-way handshake trước thì dùng luôn
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	type dialRes struct {
+		conn net.Conn
+		ip   string
+		err  error
+	}
+	resCh := make(chan dialRes, len(ips))
+
+	for _, ip := range ips {
+		go func(targetIP string) {
+			d := &net.Dialer{Timeout: 4 * time.Second}
+			conn, dialErr := d.DialContext(ctx, "tcp", net.JoinHostPort(targetIP, "443"))
+			if dialErr == nil {
+				select {
+				case <-ctx.Done():
+					conn.Close()
+					return
+				default:
+				}
+			}
+			select {
+			case resCh <- dialRes{conn, targetIP, dialErr}:
+			case <-ctx.Done():
+				if conn != nil {
+					conn.Close()
+				}
+			}
+		}(ip)
 	}
 
 	var targetConn net.Conn
 	var selectedIP string
-	for _, ip := range ips {
-		conn, dialErr := net.DialTimeout("tcp", net.JoinHostPort(ip, "443"), 4*time.Second)
-		if dialErr == nil {
-			targetConn = conn
-			selectedIP = ip
+	for i := 0; i < len(ips); i++ {
+		r := <-resCh
+		if r.err == nil {
+			targetConn = r.conn
+			selectedIP = r.ip
+			cancel()
+			remaining := len(ips) - i - 1
+			if remaining > 0 {
+				go func(n int) {
+					for j := 0; j < n; j++ {
+						rr := <-resCh
+						if rr.err == nil && rr.conn != nil {
+							rr.conn.Close()
+						}
+					}
+				}(remaining)
+			}
 			break
 		}
 	}
 
 	if targetConn == nil {
-		writeLog(fmt.Sprintf("[HTTPS-ERR] Timeout - Không thể nối TCP tới %s", serverName))
+		writeLog(fmt.Sprintf("[HTTPS-ERR] Toàn bộ %d IP của %s đều fail TCP", len(ips), serverName))
 		return
 	}
 	defer targetConn.Close()
 
-	chunkSize := 20
-	for i := 0; i < len(headerData); i += chunkSize {
-		end := i + chunkSize
-		if end > len(headerData) {
-			end = len(headerData)
-		}
-		_, writeErr := targetConn.Write(headerData[i:end])
-		if writeErr != nil {
-			writeLog(fmt.Sprintf("[HTTPS-ERR] Gửi dữ liệu chunk %d thất bại: %v", i, writeErr))
-			return
-		}
-		time.Sleep(2 * time.Millisecond)
+	// ===== GỬI NGUYÊN SNI GỐC - CHỈ FRAGMENT 1 BYTE ĐẦU (CHUẨN v0.3) =====
+	if err := sendClientHelloChunked(targetConn, headerData); err != nil {
+		writeLog(fmt.Sprintf("[HTTPS-ERR] Gửi ClientHello thất bại: %v", err))
+		return
 	}
 
-	writeLog(fmt.Sprintf("[HTTPS-SNI] Tunnel Bypass Thành Công -> %s (%s)", serverName, selectedIP))
+	writeLog(fmt.Sprintf("[HTTPS-SNI] Tunnel OK -> %s (%s, %d IP khả dụng)",
+		serverName, selectedIP, len(ips)))
 
 	var wg sync.WaitGroup
 	wg.Add(2)
-
 	go func() {
 		defer wg.Done()
 		_, _ = io.Copy(targetConn, clientConn)
@@ -489,7 +608,6 @@ func handleHTTPSConnection(clientConn net.Conn) {
 			_ = tcpConn.CloseWrite()
 		}
 	}()
-
 	go func() {
 		defer wg.Done()
 		_, _ = io.Copy(clientConn, targetConn)
@@ -497,43 +615,99 @@ func handleHTTPSConnection(clientConn net.Conn) {
 			_ = tcpConn.CloseWrite()
 		}
 	}()
-
 	wg.Wait()
 }
 
-func extractSNI(data []byte) string {
-	if len(data) < 5 || data[0] != 0x16 {
-		return ""
+// ================= XỬ LÝ CLIENTHELLO =================
+func readClientHello(conn net.Conn) ([]byte, string) {
+	var buf []byte
+	tmp := make([]byte, 4096)
+
+	_ = conn.SetReadDeadline(time.Now().Add(4 * time.Second))
+
+	for {
+		n, err := conn.Read(tmp)
+		if n > 0 {
+			buf = append(buf, tmp[:n]...)
+			if sni := extractSNI(buf); sni != "" {
+				_ = conn.SetReadDeadline(time.Time{})
+				return buf, sni
+			}
+			if isClientHelloComplete(buf) {
+				_ = conn.SetReadDeadline(time.Time{})
+				return buf, ""
+			}
+			if len(buf) > 16384 {
+				break
+			}
+		}
+		if err != nil {
+			break
+		}
 	}
-	clientHello := data[5:]
-	if len(clientHello) < 38 || clientHello[0] != 0x01 {
+	_ = conn.SetReadDeadline(time.Time{})
+	return buf, extractSNI(buf)
+}
+
+func concatHandshake(data []byte) ([]byte, bool) {
+	var hs []byte
+	offset := 0
+	for offset+5 <= len(data) {
+		if data[offset] != 0x16 {
+			return hs, false
+		}
+		recLen := int(data[offset+3])<<8 | int(data[offset+4])
+		end := offset + 5 + recLen
+		if end > len(data) {
+			hs = append(hs, data[offset+5:]...)
+			return hs, false
+		}
+		hs = append(hs, data[offset+5:end]...)
+		offset = end
+	}
+	return hs, true
+}
+
+func isClientHelloComplete(data []byte) bool {
+	hs, complete := concatHandshake(data)
+	if !complete || len(hs) < 4 || hs[0] != 0x01 {
+		return false
+	}
+	hsLen := int(hs[1])<<16 | int(hs[2])<<8 | int(hs[3])
+	return len(hs) >= 4+hsLen
+}
+
+func extractSNI(data []byte) string {
+	hs, _ := concatHandshake(data)
+	if len(hs) < 38 || hs[0] != 0x01 {
 		return ""
 	}
 	offset := 38
-	if len(clientHello) < offset+1 {
+	if len(hs) < offset+1 {
 		return ""
 	}
-	sessionIDLen := int(clientHello[offset])
+	sessionIDLen := int(hs[offset])
 	offset += 1 + sessionIDLen
-	if len(clientHello) < offset+2 {
+	if len(hs) < offset+2 {
 		return ""
 	}
-	cipherLen := int(clientHello[offset])<<8 | int(clientHello[offset+1])
+	cipherLen := int(hs[offset])<<8 | int(hs[offset+1])
 	offset += 2 + cipherLen
-	if len(clientHello) < offset+1 {
+	if len(hs) < offset+1 {
 		return ""
 	}
-	compLen := int(clientHello[offset])
+	compLen := int(hs[offset])
 	offset += 1 + compLen
-	if len(clientHello) < offset+2 {
+	if len(hs) < offset+2 {
 		return ""
 	}
-	extsLen := int(clientHello[offset])<<8 | int(clientHello[offset+1])
+	extsLen := int(hs[offset])<<8 | int(hs[offset+1])
 	offset += 2
-	if len(clientHello) < offset+extsLen {
-		extsLen = len(clientHello) - offset
+	if len(hs) < offset+extsLen {
+		extsLen = len(hs) - offset
 	}
-	extData := clientHello[offset : offset+extsLen]
+	extData := hs[offset : offset+extsLen]
+
 	for len(extData) >= 4 {
 		extType := int(extData[0])<<8 | int(extData[1])
 		extLen := int(extData[2])<<8 | int(extData[3])
@@ -558,6 +732,21 @@ func extractSNI(data []byte) string {
 	return ""
 }
 
+// Fragment ClientHello: gửi 1 byte đầu, nghỉ 3ms rồi gửi nốt (kỹ thuật chuẩn v0.3)
+// Vừa đủ để DPI không kịp ghép SNI, vừa không bị server Akamai hiểu lầm là tấn công Slowloris
+func sendClientHelloChunked(conn net.Conn, data []byte) error {
+	if len(data) <= 1 {
+		_, err := conn.Write(data)
+		return err
+	}
+	if _, err := conn.Write(data[:1]); err != nil {
+		return err
+	}
+	time.Sleep(3 * time.Millisecond)
+	_, err := conn.Write(data[1:])
+	return err
+}
+
 func stopProxy() {
 	if httpListener != nil {
 		_ = httpListener.Close()
@@ -565,7 +754,7 @@ func stopProxy() {
 	if httpsListener != nil {
 		_ = httpsListener.Close()
 	}
-	writeLog("Đã dừng toàn bộ dịch vụ Proxy")
+	writeLog("Đã dừng Proxy")
 }
 
 func IsServiceRunning() bool {
