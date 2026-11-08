@@ -191,7 +191,7 @@ func main() {
 	userDataPath := filepath.Join(programData, "CustomProxy_Data")
 
 	err = wails.Run(&options.App{
-		Title:            "Custom Proxy v1.4.0 - by ToanBB",
+		Title:            "Custom Proxy v1.4.1 - by ToanBB",
 		Width:            520,
 		Height:           520,
 		DisableResize:    true,

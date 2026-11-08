@@ -1,12 +1,12 @@
 {
     "fixed": {
-        "file_version": "1.4.0.0",
-        "product_version": "1.4.0.0"
+        "file_version": "1.4.1.0",
+        "product_version": "1.4.1.0"
     },
     "info": {
         "0409": {
-            "ProductVersion": "1.4.0",
-            "FileVersion": "1.4.0",
+            "ProductVersion": "1.4.1",
+            "FileVersion": "1.4.1",
             "CompanyName": "ToanBB",
             "FileDescription": "Custom Proxy",
             "LegalCopyright": "Copyright © 2026 ToanBB",
